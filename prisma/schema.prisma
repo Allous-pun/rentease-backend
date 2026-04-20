@@ -1,0 +1,472 @@
+// RentEase KE — Production-Ready SaaS Schema with Multi-Tenancy
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// 1. ORGANIZATION
+// ─────────────────────────────────────────────
+model Organization {
+  id               String   @id @default(cuid())
+  name             String
+  phone            String?
+  email            String?
+  subscriptionPlan String   @default("free")
+  maxUnits         Int?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  users        User[]
+  properties   Property[]
+  units        Unit[]
+  tenants      Tenant[]
+  payments     Payment[]
+  expenses     Expense[]
+  maintenance  MaintenanceRequest[]
+  reminders    Reminder[]
+  deposits     Deposit[]
+  rentCharges  RentCharge[]
+  tenantCredits TenantCredit[]
+  announcements Announcement[]
+
+  @@unique([name])
+  @@index([isActive])
+}
+
+// ─────────────────────────────────────────────
+// 2. USERS
+// ─────────────────────────────────────────────
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  email     String?  @unique
+  role      UserRole
+  password  String?
+  isDeleted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  ownedProperties     Property[]           @relation("LandlordProperties")
+  caretakerProperties Property[]           @relation("CaretakerProperties")
+  recordedExpenses    Expense[]
+  resolvedRequests    MaintenanceRequest[] @relation("AssignedCaretaker")
+  announcements       Announcement[]
+
+  @@unique([organizationId, phone])
+  @@index([organizationId])
+  @@index([role])
+}
+
+enum UserRole {
+  landlord
+  caretaker
+}
+
+// ─────────────────────────────────────────────
+// 3. PROPERTIES
+// ─────────────────────────────────────────────
+model Property {
+  id        String   @id @default(cuid())
+  name      String
+  location  String
+  isDeleted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  landlordId  String
+  landlord    User     @relation("LandlordProperties", fields: [landlordId], references: [id])
+
+  caretakerId String?
+  caretaker   User?    @relation("CaretakerProperties", fields: [caretakerId], references: [id])
+
+  units               Unit[]
+  maintenanceRequests MaintenanceRequest[]
+  expenses            Expense[]
+  announcements       Announcement[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([landlordId])
+}
+
+// ─────────────────────────────────────────────
+// 4. UNITS
+// ─────────────────────────────────────────────
+model Unit {
+  id          String     @id @default(cuid())
+  unitNumber  String
+  rentAmount  Decimal    @db.Decimal(10,2)
+  depositAmount Decimal?  @db.Decimal(10,2)
+  status      UnitStatus @default(vacant)
+  notes       String?    @db.Text
+  isDeleted   Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  rentDueDay      Int      @default(1)
+  gracePeriodDays Int      @default(5)
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id])
+
+  tenants             Tenant[]
+  payments            Payment[]
+  maintenanceRequests MaintenanceRequest[]
+  expenses            Expense[]
+  deposits            Deposit[]
+  rentCharges         RentCharge[]
+  announcements       Announcement[]
+
+  @@unique([propertyId, unitNumber])
+  @@index([organizationId])
+  @@index([propertyId])
+  @@index([status])
+}
+
+enum UnitStatus {
+  occupied
+  vacant
+}
+
+// ─────────────────────────────────────────────
+// 5. TENANTS
+// ─────────────────────────────────────────────
+model Tenant {
+  id         String       @id @default(cuid())
+  name       String
+  phone      String
+  leaseStart DateTime
+  rentDueDay Int
+  notes      String?      @db.Text
+  status     TenantStatus @default(active)
+  isDeleted  Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  unitId String
+  unit   Unit @relation(fields: [unitId], references: [id])
+
+  payments            Payment[]
+  maintenanceRequests MaintenanceRequest[]
+  reminders           Reminder[]
+  deposits            Deposit[]
+  rentCharges         RentCharge[]
+  tenantCredit        TenantCredit?
+
+  @@unique([unitId, phone])
+  @@index([organizationId])
+  @@index([unitId])
+  @@index([status])
+}
+
+enum TenantStatus {
+  active
+  moved_out
+}
+
+// ─────────────────────────────────────────────
+// 6. PAYMENTS
+// ─────────────────────────────────────────────
+model Payment {
+  id             String        @id @default(cuid())
+  amount         Decimal       @db.Decimal(10,2)
+  expectedAmount Decimal       @db.Decimal(10,2)
+  paymentDate    DateTime
+  dueDate        DateTime
+  month          Int
+  year           Int
+  status         PaymentStatus
+  method         PaymentMethod
+  transactionRef String?
+  notes          String?       @db.Text
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  unitId String
+  unit   Unit @relation(fields: [unitId], references: [id])
+
+  @@index([organizationId])
+  @@index([tenantId])
+  @@index([month, year])
+  @@index([status])
+}
+
+enum PaymentStatus {
+  paid
+  partial
+  unpaid
+}
+
+enum PaymentMethod {
+  mpesa
+  cash
+}
+
+// ─────────────────────────────────────────────
+// 7. MAINTENANCE REQUESTS
+// ─────────────────────────────────────────────
+model MaintenanceRequest {
+  id            String            @id @default(cuid())
+  title         String
+  description   String?           @db.Text
+  internalNotes String?           @db.Text
+  imageUrl      String?
+  createdBy     RequestCreatedBy
+  status        MaintenanceStatus @default(pending)
+  createdAt     DateTime          @default(now())
+  priority      MaintenancePriority @default(medium)
+  updatedAt     DateTime          @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+
+  unitId     String
+  unit       Unit     @relation(fields: [unitId], references: [id])
+
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id])
+
+  caretakerId String?
+  caretaker   User?   @relation("AssignedCaretaker", fields: [caretakerId], references: [id])
+
+  expenses Expense[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum RequestCreatedBy {
+  tenant
+  landlord
+}
+
+enum MaintenanceStatus {
+  pending
+  in_progress
+  resolved
+}
+
+enum MaintenancePriority {
+  low
+  medium
+  high
+  emergency
+}
+
+// ─────────────────────────────────────────────
+// 8. EXPENSES
+// ─────────────────────────────────────────────
+model Expense {
+  id          String   @id @default(cuid())
+  amount      Decimal  @db.Decimal(10,2)
+  description String
+  date        DateTime
+  category    ExpenseCategory @default(maintenance)
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  recordedById String
+  recordedBy   User   @relation(fields: [recordedById], references: [id])
+
+  propertyId String?
+  property   Property? @relation(fields: [propertyId], references: [id])
+
+  unitId String?
+  unit   Unit? @relation(fields: [unitId], references: [id])
+
+  maintenanceId String?
+  maintenance   MaintenanceRequest? @relation(fields: [maintenanceId], references: [id])
+
+  @@index([organizationId])
+  @@index([date])
+}
+
+enum ExpenseCategory {
+  maintenance
+  utilities
+  security
+  cleaning
+  other
+}
+
+// ─────────────────────────────────────────────
+// 9. REMINDERS
+// ─────────────────────────────────────────────
+model Reminder {
+  id        String   @id @default(cuid())
+  type      ReminderType
+  channel   ReminderChannel
+  sentAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([organizationId])
+  @@index([tenantId])
+  @@index([sentAt])
+}
+
+enum ReminderType {
+  rent_reminder
+  late_notice
+}
+
+enum ReminderChannel {
+  sms
+  whatsapp
+}
+
+// ─────────────────────────────────────────────
+// 10. DEPOSITS
+// ─────────────────────────────────────────────
+model Deposit {
+  id             String         @id @default(cuid())
+  amount         Decimal        @db.Decimal(10,2)
+  paymentDate    DateTime
+  paymentMethod  PaymentMethod
+  transactionRef String?
+  notes          String?        @db.Text
+  status         DepositStatus  @default(held)
+  refundAmount   Decimal?       @db.Decimal(10,2)
+  refundDate     DateTime?
+  refundNotes    String?        @db.Text
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  unitId String
+  unit   Unit @relation(fields: [unitId], references: [id])
+
+  @@index([organizationId])
+  @@index([tenantId])
+  @@index([status])
+}
+
+enum DepositStatus {
+  held
+  refunded
+  deducted
+}
+
+// ─────────────────────────────────────────────
+// 11. RENT CHARGES
+// ─────────────────────────────────────────────
+model RentCharge {
+  id             String   @id @default(cuid())
+  tenantId       String
+  unitId         String
+  organizationId String
+  
+  month      Int
+  year       Int
+  amount     Decimal    @db.Decimal(10,2)
+  paidAmount Decimal    @db.Decimal(10,2) @default(0)
+  dueDate    DateTime 
+  status     ChargeStatus @default(unpaid)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  unit         Unit         @relation(fields: [unitId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([tenantId, month, year])
+  @@index([tenantId])
+  @@index([status])
+  @@index([month, year])
+}
+
+enum ChargeStatus {
+  unpaid
+  partial
+  paid
+}
+
+// ─────────────────────────────────────────────
+// 12. TENANT CREDIT
+// ─────────────────────────────────────────────
+model TenantCredit {
+  id             String   @id @default(cuid())
+  tenantId       String
+  organizationId String
+  balance        Decimal  @db.Decimal(10,2) @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([tenantId])
+  @@index([tenantId])
+}
+
+// ─────────────────────────────────────────────
+// 13. ANNOUNCEMENTS (SIMPLE - JUST WHAT WAS SENT)
+// ─────────────────────────────────────────────
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  message   String   @db.Text
+  sentAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+
+  propertyId String?
+  property   Property? @relation(fields: [propertyId], references: [id])
+
+  unitId String?
+  unit   Unit? @relation(fields: [unitId], references: [id])
+
+  @@index([organizationId])
+  @@index([sentAt])
+}
