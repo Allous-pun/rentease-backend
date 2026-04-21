@@ -1,6 +1,6 @@
 import { sendAnnouncement, getAnnouncements } from './announcements.service.js'
 
-// Send announcement
+// Send announcement (bulk or single)
 export async function sendAnnouncementHandler(req, res) {
   try {
     const { title, message, propertyId, unitId } = req.body

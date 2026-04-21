@@ -1,5 +1,5 @@
 import prisma from '../../lib/prisma.js'
-import googleMessages from '../notifications/google-messages.service.js'
+import textbee from '../notifications/textbee.service.js'
 
 // Send announcement to tenants
 export async function sendAnnouncement(data) {
@@ -30,6 +30,17 @@ export async function sendAnnouncement(data) {
         include: {
           property: true
         }
+      },
+      organization: {
+        include: {
+          users: {
+            where: {
+              role: 'landlord',
+              isDeleted: false
+            },
+            take: 1
+          }
+        }
       }
     }
   })
@@ -38,21 +49,34 @@ export async function sendAnnouncement(data) {
     throw new Error('No tenants found for the selected target')
   }
 
-  // Prepare SMS message - SINGLE LINE (no line breaks)
+  // Get landlord name
+  const landlord = tenants[0]?.organization?.users?.[0]
+  const landlordName = landlord?.name || 'RentEase'
+  
+  // Get property name
   const propertyName = tenants[0]?.unit?.property?.name || 'RentEase'
-  const smsMessage = `📢 NOTICE: ${title} - ${message} - ${propertyName} Management`
 
-  // Send to each tenant
+  // Prepare SMS message with proper format
+  const smsMessage = `📢 NOTICE: ${title} - ${message} - ${propertyName} Management. Asante! — ${landlordName} via RentEase`
+
+  // Send to each tenant (bulk)
+  const phoneNumbers = tenants.map(t => t.phone)
+  
   let sentCount = 0
   let failedCount = 0
 
-  for (const tenant of tenants) {
-    try {
-      await googleMessages.sendMessage(tenant.phone, smsMessage)
-      sentCount++
-    } catch (error) {
-      failedCount++
+  try {
+    // Use bulk send for multiple recipients
+    if (phoneNumbers.length > 1) {
+      await textbee.sendBulkMessage(phoneNumbers, smsMessage)
+      sentCount = phoneNumbers.length
+    } else if (phoneNumbers.length === 1) {
+      await textbee.sendMessage(phoneNumbers[0], smsMessage)
+      sentCount = 1
     }
+  } catch (error) {
+    failedCount = phoneNumbers.length
+    console.error('Bulk send failed:', error.message)
   }
 
   // Record announcement in database

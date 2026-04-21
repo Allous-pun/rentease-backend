@@ -1,5 +1,5 @@
 import prisma from '../../lib/prisma.js'
-import googleMessages from './google-messages.service.js'
+import textbee from './textbee.service.js'
 
 // Helper function to calculate next due date
 function getNextDueDate(rentDueDay) {
@@ -18,7 +18,7 @@ function getNextDueDate(rentDueDay) {
 
 // Get connection status
 export async function getStatus() {
-  return googleMessages.getStatus()
+  return textbee.getStatus()
 }
 
 // Send test message
@@ -26,7 +26,7 @@ export async function sendTestMessage(phoneNumber, message) {
   if (!phoneNumber || !message) {
     throw new Error('Phone number and message are required')
   }
-  return googleMessages.sendMessage(phoneNumber, message)
+  return textbee.sendMessage(phoneNumber, message)
 }
 
 // Send rent reminder to tenant
@@ -39,8 +39,22 @@ export async function sendRentReminder(tenantId, organizationId) {
       status: 'active'
     },
     include: {
-      unit: true,
-      organization: true
+      unit: {
+        include: {
+          property: true
+        }
+      },
+      organization: {
+        include: {
+          users: {
+            where: {
+              role: 'landlord',
+              isDeleted: false
+            },
+            take: 1
+          }
+        }
+      }
     }
   })
 
@@ -56,16 +70,18 @@ export async function sendRentReminder(tenantId, organizationId) {
   // Format rent amount
   const formattedAmount = `KSh ${tenant.unit.rentAmount.toLocaleString()}`
   
-  // Get property name
-  const propertyName = tenant.unit.property?.name || tenant.organization?.name || 'RentEase'
+  // Get property name and unit number
+  const propertyName = tenant.unit.property?.name || 'RentEase'
+  const unitNumber = tenant.unit.unitNumber
   
-  // Get unit name
-  const unitName = tenant.unit.name || tenant.unit.unitNumber
+  // Get landlord name from organization users
+  const landlord = tenant.organization?.users?.[0]
+  const landlordName = landlord?.name || tenant.organization?.name || 'RentEase'
   
-  // New message format - single line, professional
-  const message = `Hi ${tenant.name}, this is a friendly reminder that your rent for ${monthYear} (${formattedAmount}) is due for ${propertyName} Unit ${unitName}. Pay securely via M-Pesa using this link: ${paymentLink}. Asante! — RentEase`
+  // Format the message
+  const message = `Hi ${tenant.name}, this is a friendly reminder that your rent for ${monthYear} (${formattedAmount}) is due for ${propertyName} Unit ${unitNumber}. Pay securely via M-Pesa using this link: ${paymentLink}. Asante! — ${landlordName} via RentEase`
 
-  const result = await googleMessages.sendMessage(tenant.phone, message)
+  const result = await textbee.sendMessage(tenant.phone, message)
 
   // Record in database
   await prisma.reminder.create({

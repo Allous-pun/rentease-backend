@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma.js'
-import googleMessages from '../modules/notifications/google-messages.service.js'
+import textbee from '../modules/notifications/textbee.service.js'
 
 // Helper function to calculate next due date
 function getNextDueDate(rentDueDay) {
@@ -21,16 +21,15 @@ async function sendPreDueReminder(tenant) {
   const dueDate = getNextDueDate(tenant.rentDueDay)
   const daysUntilDue = Math.ceil((dueDate - new Date()) / (1000 * 60 * 60 * 24))
   
-  if (daysUntilDue !== 3) return false // Only send exactly 3 days before
+  if (daysUntilDue !== 3) return false
   
   const paymentLink = 'https://rentease-kenya-home.vercel.app/pay-rent'
   const propertyName = tenant.unit?.property?.name || 'RentEase'
   
   const message = `🔔 RENT REMINDER: ${propertyName}. Hello ${tenant.name}, your rent of KES ${tenant.unit?.rentAmount?.toLocaleString()} for ${tenant.unit?.unitNumber} is due in ${daysUntilDue} days. Pay here: ${paymentLink}`
   
-  await googleMessages.sendMessage(tenant.phone, message)
+  await textbee.sendMessage(tenant.phone, message)
   
-  // Record reminder
   await prisma.reminder.create({
     data: {
       type: 'rent_reminder',
@@ -49,9 +48,8 @@ async function sendPostDueReminder(tenant) {
   const today = new Date()
   const daysAfterDue = Math.ceil((today - dueDate) / (1000 * 60 * 60 * 24))
   
-  if (daysAfterDue !== 1) return false // Only send exactly 1 day after
+  if (daysAfterDue !== 1) return false
   
-  // Check if tenant has paid for this month
   const currentMonth = today.getMonth() + 1
   const currentYear = today.getFullYear()
   
@@ -64,16 +62,15 @@ async function sendPostDueReminder(tenant) {
     }
   })
   
-  if (existingPayment) return false // Already paid
+  if (existingPayment) return false
   
   const paymentLink = 'https://rentease-kenya-home.vercel.app/pay-rent'
   const propertyName = tenant.unit?.property?.name || 'RentEase'
   
   const message = `⚠️ LATE RENT NOTICE: ${propertyName}. Hello ${tenant.name}, your rent of KES ${tenant.unit?.rentAmount?.toLocaleString()} for ${tenant.unit?.unitNumber} was due yesterday. Please pay immediately to avoid late fees. Pay here: ${paymentLink}`
   
-  await googleMessages.sendMessage(tenant.phone, message)
+  await textbee.sendMessage(tenant.phone, message)
   
-  // Record reminder
   await prisma.reminder.create({
     data: {
       type: 'late_notice',
@@ -90,7 +87,6 @@ async function sendPostDueReminder(tenant) {
 export async function sendDailyRentReminders() {
   console.log('🔄 Running daily rent reminder check...', new Date().toISOString())
   
-  // Get all active tenants
   const tenants = await prisma.tenant.findMany({
     where: {
       status: 'active',
@@ -109,11 +105,9 @@ export async function sendDailyRentReminders() {
   let postRemindersSent = 0
   
   for (const tenant of tenants) {
-    // Send pre-due reminder (3 days before)
     const preSent = await sendPreDueReminder(tenant)
     if (preSent) preRemindersSent++
     
-    // Send post-due reminder (1 day after)
     const postSent = await sendPostDueReminder(tenant)
     if (postSent) postRemindersSent++
   }
