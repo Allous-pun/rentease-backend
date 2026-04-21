@@ -79,7 +79,7 @@ export async function sendRentReminder(tenantId, organizationId) {
   const landlordName = landlord?.name || tenant.organization?.name || 'RentEase'
   
   // Format the message
-  const message = `Hi ${tenant.name}, this is a friendly reminder that your rent for ${monthYear} (${formattedAmount}) is due for ${propertyName} Unit ${unitNumber}. Pay securely via M-Pesa using this link: ${paymentLink}. Asante! — ${landlordName} via RentEase`
+  const message = `Hi ${tenant.name}, this is a friendly reminder that your rent for ${monthYear} (${formattedAmount}) is due for ${propertyName} Unit ${unitNumber}. Pay securely via M-Pesa using this link: ${paymentLink} . Asante! — ${landlordName} via RentEase`
 
   const result = await textbee.sendMessage(tenant.phone, message)
 
