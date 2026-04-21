@@ -52,6 +52,7 @@ export async function getPayments(req, res) {
       method: payment.method,
       transactionRef: payment.transactionRef,
       notes: payment.notes,
+      unitId: payment.unitId,
       tenant: {
         id: payment.tenant.id,
         name: payment.tenant.name,
