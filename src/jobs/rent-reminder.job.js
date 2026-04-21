@@ -16,6 +16,11 @@ function getNextDueDate(rentDueDay) {
   return dueDate
 }
 
+// Delay helper
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 // Send pre-due reminder (3 days before)
 async function sendPreDueReminder(tenant) {
   const dueDate = getNextDueDate(tenant.rentDueDay)
@@ -104,12 +109,19 @@ export async function sendDailyRentReminders() {
   let preRemindersSent = 0
   let postRemindersSent = 0
   
-  for (const tenant of tenants) {
+  for (let i = 0; i < tenants.length; i++) {
+    const tenant = tenants[i]
+    
     const preSent = await sendPreDueReminder(tenant)
     if (preSent) preRemindersSent++
     
     const postSent = await sendPostDueReminder(tenant)
     if (postSent) postRemindersSent++
+    
+    // Add delay between tenants to avoid rate limiting
+    if (i < tenants.length - 1) {
+      await delay(2000) // 2 second delay between tenants
+    }
   }
   
   console.log(`📨 Pre-due reminders sent: ${preRemindersSent}`)
