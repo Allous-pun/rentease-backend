@@ -1,4 +1,5 @@
 import prisma from '../../lib/prisma.js'
+import { generateRentCharge } from '../payment/rent-allocation.service.js'
 
 export async function addTenantService(data, organizationId) {
   // Validate rentDueDay (1-28)
@@ -63,6 +64,19 @@ export async function addTenantService(data, organizationId) {
 
     return tenant
   })
+
+  // Generate rent charge for current month after tenant is created
+  try {
+    const today = new Date()
+    const currentMonth = today.getMonth() + 1
+    const currentYear = today.getFullYear()
+    
+    await generateRentCharge(result.id, currentMonth, currentYear, organizationId)
+    console.log(`✅ Rent charge generated for ${result.name} for ${currentMonth}/${currentYear}`)
+  } catch (error) {
+    console.error('Failed to generate rent charge:', error.message)
+    // Don't throw - tenant was created successfully
+  }
 
   return result
 }
