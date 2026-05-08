@@ -11,8 +11,13 @@ function signToken(userId, organizationId, role) {
 }
 
 export async function registerUser({ orgName, name, phone, email, password }) {
-  const existing = await prisma.user.findFirst({ where: { phone } })
-  if (existing) throw new Error('Phone already registered')
+  const existing = await prisma.user.findFirst({
+    where: { phone }
+  })
+
+  if (existing) {
+    throw new Error('Phone already registered')
+  }
 
   const hashed = await bcrypt.hash(password, 10)
 
@@ -25,46 +30,76 @@ export async function registerUser({ orgName, name, phone, email, password }) {
           phone,
           email: email || null,
           role: 'landlord',
-          password: hashed,
-        },
-      },
+          password: hashed
+        }
+      }
     },
-    include: { users: true },
+    include: { users: true }
   })
 
   const user = org.users[0]
+
   const token = signToken(user.id, org.id, user.role)
 
   return {
-    user: { id: user.id, name: user.name, role: user.role },
-    organization: { id: org.id, name: org.name },
-    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      role: user.role
+    },
+    organization: {
+      id: org.id,
+      name: org.name
+    },
+    token
   }
 }
 
 export async function loginUser({ phone, email, password }) {
+  const where = {}
+
+  if (phone) where.phone = phone
+  if (email) where.email = email
+
   const user = await prisma.user.findFirst({
     where: {
-      OR: [
-        phone ? { phone } : {},
-        email ? { email } : {},
-      ],
-      isDeleted: false,
+      ...where,
+      isDeleted: false
     },
-    include: { organization: true },
+    include: { organization: true }
   })
 
-  if (!user || !user.password) throw new Error('Invalid credentials')
+  if (!user) {
+    throw new Error('User not found')
+  }
+
+  if (!user.password) {
+    throw new Error('Account has no password set')
+  }
 
   const valid = await bcrypt.compare(password, user.password)
-  if (!valid) throw new Error('Invalid credentials')
 
-  const token = signToken(user.id, user.organizationId, user.role)
+  if (!valid) {
+    throw new Error('Invalid password')
+  }
+
+  const token = signToken(
+    user.id,
+    user.organizationId,
+    user.role
+  )
 
   return {
-    user: { id: user.id, name: user.name, role: user.role },
-    organization: { id: user.organization.id, name: user.organization.name },
-    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      role: user.role
+    },
+    organization: {
+      id: user.organization.id,
+      name: user.organization.name
+    },
+    token
   }
 }
 
@@ -72,8 +107,17 @@ export async function getMe(userId) {
   return prisma.user.findUnique({
     where: { id: userId },
     select: {
-      id: true, name: true, phone: true, email: true, role: true,
-      organization: { select: { id: true, name: true } },
-    },
+      id: true,
+      name: true,
+      phone: true,
+      email: true,
+      role: true,
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
   })
 }
